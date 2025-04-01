@@ -1,142 +1,177 @@
 #!/bin/bash
-# 不依赖systemd的Hysteria2一键脚本
 
-# 定义颜色函数
-random_color() {
-  colors=("31" "32" "33" "34" "35" "36" "37")
-  echo -e "\e[${colors[$((RANDOM % 7))]}m$1\e[0m"
-}
+red='\033[0;31m'
+green='\033[0;32m'
+blue='\033[0;34m'
+yellow='\033[0;33m'
+plain='\033[0m'
+
+xui_home="/usr/local/x-ui"
+xui_bin="/usr/local/x-ui/x-ui"
+pid_file="/var/run/x-ui.pid"
+log_file="/var/log/x-ui.log"
 
 # 检查root权限
-if [ "$EUID" -ne 0 ]; then
-  echo -e "$(random_color '请使用root用户执行！')"
-  exit 1
-fi
+[[ $EUID -ne 0 ]] && echo -e "${red}Error: ${plain} Please use root user\n" && exit 1
+
+# 系统检测
+check_os() {
+    if [[ -f /etc/os-release ]]; then
+        source /etc/os-release
+        release=$ID
+    else
+        echo -e "${red}Unsupported OS${plain}" && exit 1
+    fi
+    echo -e "OS: ${green}${PRETTY_NAME}${plain}"
+}
+
+# 架构检测
+check_arch() {
+    case "$(uname -m)" in
+        x86_64)  arch="amd64" ;;
+        aarch64) arch="arm64" ;;
+        armv7l)  arch="armv7" ;;
+        *)       echo -e "${red}Unsupported architecture${plain}" && exit 1 ;;
+    esac
+    echo -e "Arch: ${green}${arch}${plain}"
+}
 
 # 安装依赖
 install_deps() {
-  echo -e "$(random_color '正在安装依赖...')"
-  if command -v apt &> /dev/null; then
-    apt update
-    apt install -y wget openssl jq
-  elif command -v yum &> /dev/null; then
-    yum install -y wget openssl jq
-  else
-    echo -e "$(random_color '不支持的包管理器！')"
-    exit 1
-  fi
+    echo -e "${yellow}Installing dependencies...${plain}"
+    if [[ $release =~ "ubuntu|debian" ]]; then
+        apt update && apt install -y wget tar
+    elif [[ $release =~ "centos|fedora" ]]; then
+        yum install -y wget tar
+    else
+        echo -e "${red}Unsupported package manager${plain}" && exit 1
+    fi
 }
 
-# 安装Hysteria核心
-install_core() {
-  ARCH=$(uname -m)
-  case "$ARCH" in
-    x86_64) ARCH="amd64" ;;
-    aarch64) ARCH="arm64" ;;
-    *) echo -e "$(random_color '不支持的架构！')"; exit 1 ;;
-  esac
-
-  LATEST_VER=$(curl -s https://api.github.com/repos/apernet/hysteria/releases/latest | jq -r .tag_name)
-  DOWNLOAD_URL="https://github.com/apernet/hysteria/releases/download/$LATEST_VER/hysteria-linux-$ARCH"
-
-  mkdir -p /root/hy3
-  cd /root/hy3
-  
-  echo -e "$(random_color '正在下载Hysteria...')"
-  wget -q $DOWNLOAD_URL -O hysteria
-  chmod +x hysteria
+# 生成随机字符串
+gen_random_str() {
+    head -c 100 /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $1 | head -n 1
 }
 
-# 生成配置文件
-gen_config() {
-  echo -e "$(random_color '\n正在生成配置...')"
-  read -p "请输入监听端口（默认443）: " PORT
-  PORT=${PORT:-443}
-
-  read -p "请输入密码（留空自动生成）: " PASS
-  if [ -z "$PASS" ]; then
-    PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9')
-  fi
-
-  read -p "请输入伪装域名（默认bing.com）: " DOMAIN
-  DOMAIN=${DOMAIN:-bing.com}
-
-  # 生成自签名证书
-  mkdir -p /root/hy3/certs
-  openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) \
-    -keyout /root/hy3/certs/key.pem \
-    -out /root/hy3/certs/cert.pem \
-    -subj "/CN=$DOMAIN" -days 36500
-
-  cat > /root/hy3/config.yaml <<EOF
-listen: :$PORT
-tls:
-  cert: /root/hy3/certs/cert.pem
-  key: /root/hy3/certs/key.pem
-auth:
-  type: password
-  password: $PASS
-masquerade:
-  type: proxy
-  proxy:
-    url: https://$DOMAIN
-    rewriteHost: true
-EOF
-}
-
-# 启动服务
+# 进程管理
 start_service() {
-  echo -e "$(random_color '\n启动服务中...')"
-  cd /root/hy3
-  
-  # 创建启动脚本
-  cat > start.sh <<EOF
-#!/bin/bash
-while true; do
-  ./hysteria server --config config.yaml
-  sleep 10
-done
+    if [ -f $pid_file ]; then
+        echo -e "${yellow}Stopping existing service...${plain}"
+        kill -9 $(cat $pid_file) 2>/dev/null
+    fi
+    
+    echo -e "${green}Starting x-ui...${plain}"
+    nohup $xui_bin > $log_file 2>&1 &
+    echo $! > $pid_file
+    sleep 2
+    
+    if ps -p $(cat $pid_file) > /dev/null; then
+        echo -e "${green}Service started successfully! PID: $(cat $pid_file)${plain}"
+    else
+        echo -e "${red}Failed to start service! Check ${log_file}${plain}"
+        exit 1
+    fi
+}
+
+# 配置初始化
+init_config() {
+    mkdir -p $xui_home
+    echo -e "${yellow}Generating initial config...${plain}"
+    
+    local admin_user=$(gen_random_str 8)
+    local admin_pass=$(gen_random_str 12)
+    local panel_port=$(shuf -i 20000-65000 -n 1)
+    local web_path=$(gen_random_str 10)
+    
+    cat > $xui_home/config.json <<EOF
+{
+  "web": {
+    "port": $panel_port,
+    "secret": "",
+    "basePath": "/$web_path",
+    "username": "$admin_user",
+    "password": "$admin_pass"
+  }
+}
 EOF
 
-  chmod +x start.sh
-  nohup ./start.sh > hysteria.log 2>&1 &
-  
-  sleep 2
-  if pgrep -f "hysteria server" >/dev/null; then
-    echo -e "$(random_color '服务启动成功！')"
-  else
-    echo -e "$(random_color '服务启动失败，请检查日志！')"
+    echo -e "${green}========================================"
+    echo -e " Panel Address: http://[YOUR_IP]:$panel_port/$web_path"
+    echo -e " Username: $admin_user"
+    echo -e " Password: $admin_pass"
+    echo -e "========================================${plain}"
+}
+
+# 安装核心
+install_core() {
+    echo -e "${yellow}Downloading 3x-ui...${plain}"
+    latest_ver=$(curl -s https://api.github.com/repos/MHSanaei/3x-ui/releases/latest | grep tag_name | cut -d'"' -f4)
+    [ -z "$latest_ver" ] && echo -e "${red}Failed to get version${plain}" && exit 1
+    
+    wget -qO /tmp/x-ui.tar.gz "https://github.com/MHSanaei/3x-ui/releases/download/$latest_ver/x-ui-linux-$arch.tar.gz"
+    [ $? -ne 0 ] && echo -e "${red}Download failed${plain}" && exit 1
+    
+    echo -e "${green}Extracting files...${plain}"
+    tar xzf /tmp/x-ui.tar.gz -C /usr/local/
+    rm -f /tmp/x-ui.tar.gz
+    chmod +x $xui_bin
+    
+    # 创建管理脚本
+    cat > /usr/local/bin/x-ui <<'EOF'
+#!/bin/bash
+case $1 in
+start)
+    nohup /usr/local/x-ui/x-ui > /var/log/x-ui.log 2>&1 &
+    echo $! > /var/run/x-ui.pid
+    ;;
+stop)
+    [ -f /var/run/x-ui.pid ] && kill -9 $(cat /var/run/x-ui.pid)
+    ;;
+restart)
+    $0 stop
+    sleep 1
+    $0 start
+    ;;
+status)
+    if [ -f /var/run/x-ui.pid ]; then
+        if ps -p $(cat /var/run/x-ui.pid) > /dev/null; then
+            echo "Service is running (PID: $(cat /var/run/x-ui.pid))"
+        else
+            echo "Service is not running (PID file exists)"
+        fi
+    else
+        echo "Service is not running"
+    fi
+    ;;
+log)
+    tail -f /var/log/x-ui.log
+    ;;
+*)
+    echo "Usage: $0 {start|stop|restart|status|log}"
     exit 1
-  fi
+    ;;
+esac
+EOF
+
+    chmod +x /usr/local/bin/x-ui
 }
 
-# 显示配置
-show_config() {
-  IP=$(curl -s4m8 ip.sb -k) || IP=$(curl -s6m8 ip.sb -k)
-  PORT=$(grep 'listen: ' /root/hy3/config.yaml | awk '{print $2}' | cut -d':' -f2)
-  PASS=$(grep 'password: ' /root/hy3/config.yaml | awk '{print $2}')
-  DOMAIN=$(grep 'url: ' /root/hy3/config.yaml | awk '{print $2}' | cut -d'/' -f3)
-
-  echo -e "$(random_color '\n============ 配置信息 ============')"
-  echo -e "$(random_color '服务器IP：')$IP"
-  echo -e "$(random_color '端口：')$PORT"
-  echo -e "$(random_color '密码：')$PASS"
-  echo -e "$(random_color '伪装域名：')$DOMAIN"
-  echo -e "$(random_color '协议：')hysteria2"
-  echo -e "$(random_color 'SNI：')$DOMAIN"
-  echo -e "$(random_color '跳过证书验证：')true"
-  echo -e "$(random_color '===============================')"
-  echo -e "$(random_color '客户端连接命令：')"
-  echo -e "hysteria2://$PASS@$IP:$PORT/?insecure=1&sni=$DOMAIN#Docker_Hy2"
-}
-
-# 主流程
+# 主安装流程
 main() {
-  install_deps
-  install_core
-  gen_config
-  start_service
-  show_config
+    check_os
+    check_arch
+    install_deps
+    install_core
+    init_config
+    start_service
+    
+    echo -e "\n${green}Installation completed!${plain}"
+    echo -e "Manage commands:"
+    echo -e "  x-ui start    - Start service"
+    echo -e "  x-ui stop     - Stop service"
+    echo -e "  x-ui restart  - Restart service"
+    echo -e "  x-ui status   - Check running status"
+    echo -e "  x-ui log      - View real-time logs"
 }
 
 main
