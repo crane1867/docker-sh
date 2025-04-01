@@ -39,12 +39,30 @@ check_arch() {
 # 安装依赖
 install_deps() {
     echo -e "${yellow}Installing dependencies...${plain}"
-    if [[ $release =~ "ubuntu|debian" ]]; then
-        apt update && apt install -y wget tar
-    elif [[ $release =~ "centos|fedora" ]]; then
+    
+    # 自动检测包管理器
+    if command -v apt-get >/dev/null 2>&1; then
+        echo -e "${green}Detected APT package manager${plain}"
+        apt-get update
+        apt-get install -y wget tar
+    elif command -v yum >/dev/null 2>&1; then
+        echo -e "${green}Detected YUM package manager${plain}"
         yum install -y wget tar
+    elif command -v dnf >/dev/null 2>&1; then
+        echo -e "${green}Detected DNF package manager${plain}"
+        dnf install -y wget tar
+    elif command -v apk >/dev/null 2>&1; then
+        echo -e "${green}Detected APK package manager${plain}"
+        apk add --no-cache wget tar
+    elif command -v pacman >/dev/null 2>&1; then
+        echo -e "${green}Detected Pacman package manager${plain}"
+        pacman -Sy --noconfirm wget tar
     else
-        echo -e "${red}Unsupported package manager${plain}" && exit 1
+        echo -e "${red}Unsupported package manager! Try manual install:${plain}"
+        echo -e "Please install these packages manually:"
+        echo -e "1. wget"
+        echo -e "2. tar"
+        exit 1
     fi
 }
 
