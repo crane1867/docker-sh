@@ -94,6 +94,8 @@ config_after_install() {
             local config_webBasePath=$(gen_random_string 15)
             local config_username=$(gen_random_string 10)
             local config_password=$(gen_random_string 10)
+            
+            # 保留原脚本的自定义端口功能
             read -rp "Would you like to customize the Panel Port settings? (If not, a random port will be applied) [y/n]: " config_confirm
             if [[ "${config_confirm}" == "y" || "${config_confirm}" == "Y" ]]; then
                 read -rp "Please set up the panel port: " config_port
@@ -102,6 +104,14 @@ config_after_install() {
                 local config_port=$(shuf -i 1024-62000 -n 1)
                 echo -e "${yellow}Generated random port: ${config_port}${plain}"
             fi
+            
+            # 保留原脚本的自定义用户名密码功能
+            read -rp "Would you like to customize the username and password? [y/n]: " user_confirm
+            if [[ "${user_confirm}" == "y" || "${user_confirm}" == "Y" ]]; then
+                read -rp "Please set up the username: " config_username
+                read -rp "Please set up the password: " config_password
+            fi
+            
             /usr/local/x-ui/x-ui setting -username "${config_username}" -password "${config_password}" -port "${config_port}" -webBasePath "${config_webBasePath}"
             echo -e "${green}Configuration updated successfully!${plain}"
             echo -e "${blue}==================================================${plain}"
@@ -155,8 +165,15 @@ case "\$1" in
         killall x-ui
         nohup /usr/local/x-ui/x-ui >/dev/null 2>&1 &
         ;;
+    status)
+        if pgrep -x "x-ui" >/dev/null; then
+            echo "x-ui is running"
+        else
+            echo "x-ui is not running"
+        fi
+        ;;
     *)
-        echo "Usage: \$0 {start|stop|restart}"
+        echo "Usage: \$0 {start|stop|restart|status}"
         exit 1
         ;;
 esac
@@ -175,7 +192,16 @@ EOF
         chkconfig x-ui on
     fi
     
+    # 创建快捷键
+    ln -sf /usr/local/x-ui/x-ui /usr/bin/x-ui
+    
     echo -e "${green}x-ui has been added to startup successfully!${plain}"
+    echo -e "${yellow}You can now use the following commands:${plain}"
+    echo -e "  x-ui              - Show admin menu"
+    echo -e "  service x-ui start    - Start service"
+    echo -e "  service x-ui stop     - Stop service"
+    echo -e "  service x-ui restart  - Restart service"
+    echo -e "  service x-ui status   - Check service status"
 }
 
 install_xui() {
