@@ -165,7 +165,7 @@ install_x-ui() {
     chmod +x /usr/local/x-ui/x-ui
     chmod +x /usr/local/x-ui/bin/xray-linux-${arch}
 
-    wget -O /usr/bin/x-ui https://raw.githubusercontent.com/FranzKafkaYu/x-ui/main/x-ui.sh
+    https://raw.githubusercontent.com/crane1867/docker-sh/refs/heads/main/x-ui.sh
     chmod +x /usr/bin/x-ui
 
     touch $LOG_FILE && chmod 666 $LOG_FILE
