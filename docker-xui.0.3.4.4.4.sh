@@ -154,7 +154,7 @@ install_x-ui() {
     
     # 安装管理脚本
     wget -q --no-check-certificate -O /usr/bin/x-ui \
-        https://raw.githubusercontent.com/crane1867/docker-sh/refs/heads/main/0.3.4.4x-ui.sh
+        https://raw.githubusercontent.com/crane1867/docker-sh/refs/heads/main/x-ui.sh
     chmod +x /usr/local/x-ui/x-ui /usr/bin/x-ui
     
     # 初始化配置
