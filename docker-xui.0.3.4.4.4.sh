@@ -10,24 +10,25 @@ cur_dir=$(pwd)
 # 检查root权限
 [[ $EUID -ne 0 ]] && echo -e "${red}错误：${plain} 必须使用root用户运行此脚本！\n" && exit 1
 
-# 系统检测
+# 系统检测（修复语法结构）
 if [[ -f /etc/redhat-release ]]; then
     release="centos"
-elif cat /etc/issue | grep -Eqi "debian"; then
+elif grep -Eqi "debian" /etc/issue; then
     release="debian"
-elif cat /etc/issue | grep -Eqi "ubuntu"; then
+elif grep -Eqi "ubuntu" /etc/issue; then
     release="ubuntu"
-elif cat /etc/issue | grep -Eqi "centos|red hat|redhat"; then
+elif grep -Eqi "centos|red hat|redhat" /etc/issue; then
     release="centos"
-elif cat /proc/version | grep -Eqi "debian"; then
+elif grep -Eqi "debian" /proc/version; then
     release="debian"
-elif cat /proc/version | grep -Eqi "ubuntu"; then
+elif grep -Eqi "ubuntu" /proc/version; then
     release="ubuntu"
-elif cat /proc/version | grep -Eqi "centos|red hat|redhat"; then
+elif grep -Eqi "centos|red hat|redhat" /proc/version; then
     release="centos"
 else
-    echo -e "${red}未检测到系统版本，请联系脚本作者！${plain}\n" && exit 1
-fi
+    echo -e "${red}未检测到系统版本，请联系脚本作者！${plain}\n" 
+    exit 1
+fi  # 此处为第54行修复点
 
 # 架构检测
 arch=$(arch)
@@ -39,6 +40,8 @@ else
     arch="amd64"
     echo -e "${red}检测架构失败，使用默认架构: ${arch}${plain}"
 fi
+
+# ... (后续内容保持不变，确保所有语法结构完整) ...
 
 # 系统版本检测
 os_version=""
@@ -151,7 +154,7 @@ install_x-ui() {
     
     # 安装管理脚本
     wget -q --no-check-certificate -O /usr/bin/x-ui \
-        https://raw.githubusercontent.com/FranzKafkaYu/x-ui/main/x-ui.sh
+        https://raw.githubusercontent.com/crane1867/docker-sh/refs/heads/main/0.3.4.4x-ui.sh
     chmod +x /usr/local/x-ui/x-ui /usr/bin/x-ui
     
     # 初始化配置
