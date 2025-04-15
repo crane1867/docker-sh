@@ -22,7 +22,6 @@ else
     echo "Failed to check the system OS, please contact the author!" >&2
     exit 1
 fi
-
 echo "The OS release is: $release"
 
 arch() {
@@ -34,7 +33,7 @@ arch() {
     armv6* | armv6) echo 'armv6' ;;
     armv5* | armv5) echo 'armv5' ;;
     s390x) echo 's390x' ;;
-    *) echo -e "${green}Unsupported CPU architecture! ${plain}" && rm -f install.sh && exit 1 ;;
+    *) echo -e "${green}Unsupported CPU architecture! ${plain}" && rm -f docker-3xui.sh && exit 1 ;;
     esac
 }
 
@@ -42,6 +41,7 @@ echo "Arch: $(arch)"
 
 check_glibc_version() {
     glibc_version=$(ldd --version | head -n1 | awk '{print $NF}')
+    
     required_version="2.32"
     if [[ "$(printf '%s\n' "$required_version" "$glibc_version" | sort -V | head -n1)" != "$required_version" ]]; then
         echo -e "${red}GLIBC version $glibc_version is too old! Required: 2.32 or higher${plain}"
@@ -50,7 +50,6 @@ check_glibc_version() {
     fi
     echo "GLIBC version: $glibc_version (meets requirement of 2.32+)"
 }
-
 check_glibc_version
 
 install_base() {
@@ -94,8 +93,7 @@ config_after_install() {
             local config_webBasePath=$(gen_random_string 15)
             local config_username=$(gen_random_string 10)
             local config_password=$(gen_random_string 10)
-            
-            # 保留原脚本的自定义端口功能
+
             read -rp "Would you like to customize the Panel Port settings? (If not, a random port will be applied) [y/n]: " config_confirm
             if [[ "${config_confirm}" == "y" || "${config_confirm}" == "Y" ]]; then
                 read -rp "Please set up the panel port: " config_port
@@ -104,148 +102,128 @@ config_after_install() {
                 local config_port=$(shuf -i 1024-62000 -n 1)
                 echo -e "${yellow}Generated random port: ${config_port}${plain}"
             fi
-            
-            # 保留原脚本的自定义用户名密码功能
-            read -rp "Would you like to customize the username and password? [y/n]: " user_confirm
-            if [[ "${user_confirm}" == "y" || "${user_confirm}" == "Y" ]]; then
-                read -rp "Please set up the username: " config_username
-                read -rp "Please set up the password: " config_password
-            fi
-            
+
             /usr/local/x-ui/x-ui setting -username "${config_username}" -password "${config_password}" -port "${config_port}" -webBasePath "${config_webBasePath}"
-            echo -e "${green}Configuration updated successfully!${plain}"
-            echo -e "${blue}==================================================${plain}"
-            echo -e "${blue}Panel Access Information${plain}"
-            echo -e "${blue}==================================================${plain}"
-            echo -e "${blue}Panel URL: http://${server_ip}:${config_port}/${config_webBasePath}${plain}"
-            echo -e "${blue}Username: ${config_username}${plain}"
-            echo -e "${blue}Password: ${config_password}${plain}"
-            echo -e "${blue}==================================================${plain}"
+            echo -e "This is a fresh installation, generating random login info for security concerns:"
+            echo -e "###############################################"
+            echo -e "${green}Username: ${config_username}${plain}"
+            echo -e "${green}Password: ${config_password}${plain}"
+            echo -e "${green}Port: ${config_port}${plain}"
+            echo -e "${green}WebBasePath: ${config_webBasePath}${plain}"
+            echo -e "${green}Access URL: http://${server_ip}:${config_port}/${config_webBasePath}${plain}"
+            echo -e "###############################################"
+            echo -e "${yellow}If you forgot your login info, you can type 'x-ui settings' to check${plain}"
+        else
+            local config_webBasePath=$(gen_random_string 15)
+            echo -e "${yellow}WebBasePath is missing or too short. Generating a new one...${plain}"
+            /usr/local/x-ui/x-ui setting -webBasePath "${config_webBasePath}"
+            echo -e "${green}New WebBasePath: ${config_webBasePath}${plain}"
+            echo -e "${green}Access URL: http://${server_ip}:${existing_port}/${config_webBasePath}${plain}"
         fi
     else
-        echo -e "${green}Existing configuration detected and preserved.${plain}"
-        echo -e "${blue}==================================================${plain}"
-        echo -e "${blue}Panel Access Information${plain}"
-        echo -e "${blue}==================================================${plain}"
-        echo -e "${blue}Panel URL: http://${server_ip}:${existing_port}/${existing_webBasePath}${plain}"
-        echo -e "${blue}Username: ${existing_username}${plain}"
-        echo -e "${blue}Password: ${existing_password}${plain}"
-        echo -e "${blue}==================================================${plain}"
-    fi
-}
+        if [[ "$existing_username" == "admin" && "$existing_password" == "admin" ]]; then
+            local config_username=$(gen_random_string 10)
+            local config_password=$(gen_random_string 10)
 
-# 添加非systemd的启动管理功能
-add_to_startup() {
-    echo -e "${green}Adding x-ui to startup without systemd...${plain}"
-    
-    # 创建启动脚本
-    cat > /etc/init.d/x-ui <<EOF
-#!/bin/sh
-### BEGIN INIT INFO
-# Provides:          x-ui
-# Required-Start:    \$network \$local_fs \$remote_fs
-# Required-Stop:     \$network \$local_fs \$remote_fs
-# Default-Start:     2 3 4 5
-# Default-Stop:      0 1 6
-# Short-Description: x-ui service
-# Description:       x-ui service
-### END INIT INFO
-
-case "\$1" in
-    start)
-        echo "Starting x-ui..."
-        nohup /usr/local/x-ui/x-ui >/dev/null 2>&1 &
-        ;;
-    stop)
-        echo "Stopping x-ui..."
-        killall x-ui
-        ;;
-    restart)
-        echo "Restarting x-ui..."
-        killall x-ui
-        nohup /usr/local/x-ui/x-ui >/dev/null 2>&1 &
-        ;;
-    status)
-        if pgrep -x "x-ui" >/dev/null; then
-            echo "x-ui is running"
+            echo -e "${yellow}Default credentials detected. Security update required...${plain}"
+            /usr/local/x-ui/x-ui setting -username "${config_username}" -password "${config_password}"
+            echo -e "Generated new random login credentials:"
+            echo -e "###############################################"
+            echo -e "${green}Username: ${config_username}${plain}"
+            echo -e "${green}Password: ${config_password}${plain}"
+            echo -e "###############################################"
+            echo -e "${yellow}If you forgot your login info, you can type 'x-ui settings' to check${plain}"
         else
-            echo "x-ui is not running"
+            echo -e "${green}Username, Password, and WebBasePath are properly set. Exiting...${plain}"
         fi
-        ;;
-    *)
-        echo "Usage: \$0 {start|stop|restart|status}"
-        exit 1
-        ;;
-esac
-
-exit 0
-EOF
-
-    # 设置权限
-    chmod +x /etc/init.d/x-ui
-    
-    # 添加到启动项
-    if command -v update-rc.d >/dev/null 2>&1; then
-        update-rc.d x-ui defaults
-    elif command -v chkconfig >/dev/null 2>&1; then
-        chkconfig --add x-ui
-        chkconfig x-ui on
     fi
-    
-    # 创建快捷键
-    ln -sf /usr/local/x-ui/x-ui /usr/bin/x-ui
-    
-    echo -e "${green}x-ui has been added to startup successfully!${plain}"
-    echo -e "${yellow}You can now use the following commands:${plain}"
-    echo -e "  x-ui              - Show admin menu"
-    echo -e "  service x-ui start    - Start service"
-    echo -e "  service x-ui stop     - Stop service"
-    echo -e "  service x-ui restart  - Restart service"
-    echo -e "  service x-ui status   - Check service status"
+
+    /usr/local/x-ui/x-ui migrate
 }
 
-install_xui() {
-    echo -e "${green}Installing x-ui...${plain}"
-    
-    # 下载并安装x-ui
-    mkdir -p /usr/local/x-ui
-    cd /usr/local/x-ui || exit 1
-    
-    # 根据架构下载合适的版本
-    case $(arch) in
-        amd64)
-            wget -O x-ui.tar.gz https://github.com/vaxilu/x-ui/releases/latest/download/x-ui-linux-amd64.tar.gz
-            ;;
-        arm64)
-            wget -O x-ui.tar.gz https://github.com/vaxilu/x-ui/releases/latest/download/x-ui-linux-arm64.tar.gz
-            ;;
-        armv7)
-            wget -O x-ui.tar.gz https://github.com/vaxilu/x-ui/releases/latest/download/x-ui-linux-armv7.tar.gz
-            ;;
-        *)
-            echo -e "${red}Unsupported architecture for x-ui!${plain}"
+install_x-ui() {
+    cd /usr/local/
+
+    if [ $# == 0 ]; then
+        tag_version=$(curl -Ls "https://api.github.com/repos/MHSanaei/3x-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        if [[ ! -n "$tag_version" ]]; then
+            echo -e "${red}Failed to fetch x-ui version, it may be due to GitHub API restrictions, please try it later${plain}"
             exit 1
-            ;;
-    esac
-    
-    tar -zxvf x-ui.tar.gz
-    rm -f x-ui.tar.gz
-    
-    # 设置可执行权限
+        fi
+        echo -e "Got x-ui latest version: ${tag_version}, beginning the installation..."
+        wget -N -O /usr/local/x-ui-linux-$(arch).tar.gz https://github.com/MHSanaei/3x-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz
+        if [[ $? -ne 0 ]]; then
+            echo -e "${red}Downloading x-ui failed, please be sure that your server can access GitHub ${plain}"
+            exit 1
+        fi
+    else
+        tag_version=$1
+        tag_version_numeric=${tag_version#v}
+        min_version="2.3.5"
+
+        if [[ "$(printf '%s\n' "$min_version" "$tag_version_numeric" | sort -V | head -n1)" != "$min_version" ]]; then
+            echo -e "${red}Please use a newer version (at least v2.3.5). Exiting installation.${plain}"
+            exit 1
+        fi
+
+        url="https://github.com/MHSanaei/3x-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz"
+        echo -e "Beginning to install x-ui $1"
+        wget -N -O /usr/local/x-ui-linux-$(arch).tar.gz ${url}
+        if [[ $? -ne 0 ]]; then
+            echo -e "${red}Download x-ui $1 failed, please check if the version exists ${plain}"
+            exit 1
+        fi
+    fi
+
+    if [[ -e /usr/local/x-ui/ ]]; then
+        echo -e "${yellow}Stopping existing x-ui process if running...${plain}"
+        pkill -f "/usr/local/x-ui/x-ui"
+        rm -rf /usr/local/x-ui/
+    fi
+
+    tar zxvf x-ui-linux-$(arch).tar.gz
+    rm -f x-ui-linux-$(arch).tar.gz
+    cd x-ui
     chmod +x x-ui
-    
-    # 添加到启动项
-    add_to_startup
-    
-    # 启动服务
-    /etc/init.d/x-ui start
-    
-    # 配置
+
+    # Check the system's architecture and rename the file accordingly
+    if [[ $(arch) == "armv5" || $(arch) == "armv6" || $(arch) == "armv7" ]]; then
+        mv bin/xray-linux-$(arch) bin/xray-linux-arm
+        chmod +x bin/xray-linux-arm
+    fi
+
+    chmod +x x-ui bin/xray-linux-$(arch)
+    # Remove systemd service file copying (no longer needed)
+    # cp -f x-ui.service /etc/systemd/system/
+    wget -O /usr/bin/x-ui https://raw.githubusercontent.com/MHSanaei/3x-ui/main/x-ui.sh
+    chmod +x /usr/local/x-ui/x-ui.sh
+    chmod +x /usr/bin/x-ui
     config_after_install
-    
-    echo -e "${green}x-ui installation completed!${plain}"
+
+    # Instead of using systemd, start x-ui directly in the background.
+    /usr/local/x-ui/x-ui &
+    echo -e "${green}x-ui ${tag_version}${plain} installation finished, it is running now..."
+    echo -e ""
+    echo -e "┌───────────────────────────────────────────────────────┐
+│  ${blue}x-ui control menu usages (subcommands):${plain}              │
+│                                                       │
+│  ${blue}x-ui${plain}              - Admin Management Script          │
+│  ${blue}x-ui start${plain}        - Start                            │
+│  ${blue}x-ui stop${plain}         - Stop                             │
+│  ${blue}x-ui restart${plain}      - Restart                          │
+│  ${blue}x-ui status${plain}       - Current Status                   │
+│  ${blue}x-ui settings${plain}     - Current Settings                 │
+│  ${blue}x-ui enable${plain}       - Enable Autostart on OS Startup   │
+│  ${blue}x-ui disable${plain}      - Disable Autostart on OS Startup  │
+│  ${blue}x-ui log${plain}          - Check logs                       │
+│  ${blue}x-ui banlog${plain}       - Check Fail2ban ban logs          │
+│  ${blue}x-ui update${plain}       - Update                           │
+│  ${blue}x-ui legacy${plain}       - legacy version                   │
+│  ${blue}x-ui install${plain}      - Install                          │
+│  ${blue}x-ui uninstall${plain}    - Uninstall                        │
+└───────────────────────────────────────────────────────┘"
 }
 
-# 主安装流程
+echo -e "${green}Running...${plain}"
 install_base
-install_xui
+install_x-ui $1
