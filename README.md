@@ -12,14 +12,25 @@ bash <(curl -sL https://raw.githubusercontent.com/crane1867/docker-sh/refs/heads
 ```
 使用x-ui来管理
 如：
+
 x-ui start
+
 x-ui stop
+
 x-ui restart
+
 x-ui status
+
 x-ui settings
+
 x-ui enable
+
 x-ui log
+
 x-ui banlog
+
 x-ui update
+
 x-ui setport
+
 {start|stop|restart|status|settings|enable|disable|log|banlog|update|legacy|install|uninstall|setport}
