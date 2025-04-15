@@ -259,7 +259,7 @@ pid_file="/var/run/x-ui.pid"
 log_file="/var/log/x-ui.log"
 config_file="$xui_home/config.json"
 
-show_menu() {
+function show_menu() {
     echo -e "${green}x-ui Management Menu${plain}"
     echo -e "1. Change panel port"
     echo -e "2. Reset panel settings"
@@ -271,7 +271,7 @@ show_menu() {
     echo -n "Please enter your choice [0-6]: "
 }
 
-start_service() {
+function start_service() {
     if [ -f $pid_file ]; then
         echo -e "${yellow}Stopping existing service...${plain}"
         kill -9 $(cat $pid_file) 2>/dev/null
@@ -288,7 +288,7 @@ start_service() {
     fi
 }
 
-stop_service() {
+function stop_service() {
     if [ -f $pid_file ]; then
         echo -e "${yellow}Stopping x-ui...${plain}"
         kill -9 $(cat $pid_file) 2>/dev/null
@@ -299,12 +299,12 @@ stop_service() {
     fi
 }
 
-restart_service() {
+function restart_service() {
     stop_service
     start_service
 }
 
-change_port() {
+function change_port() {
     if [ ! -f $config_file ]; then
         echo -e "${red}Config file not found!${plain}"
         return 1
@@ -328,7 +328,7 @@ change_port() {
     restart_service
 }
 
-reset_panel() {
+function reset_panel() {
     echo -e "${yellow}Resetting panel settings...${plain}"
     stop_service
     
@@ -358,7 +358,7 @@ EOF
     start_service
 }
 
-show_config() {
+function show_config() {
     if [ ! -f $config_file ]; then
         echo -e "${red}Config file not found!${plain}"
         return 1
@@ -376,7 +376,7 @@ show_config() {
     echo -e "${green}=======================================${plain}"
 }
 
-uninstall_service() {
+function uninstall_service() {
     echo -e "${yellow}Uninstalling x-ui...${plain}"
     stop_service
     
@@ -388,7 +388,7 @@ uninstall_service() {
     echo -e "${green}x-ui has been uninstalled successfully!${plain}"
 }
 
-gen_random_str() {
+function gen_random_str() {
     head -c 100 /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $1 | head -n 1
 }
 
