@@ -175,7 +175,7 @@ show_menu() {
 }
 
 # 命令行参数处理
-if [[ $# > 0 ]]; then
+if [[ $# -gt 0 ]]; then
     case $1 in
     "start") start ;;
     "stop") stop ;;
