@@ -1,358 +1,181 @@
 #!/bin/bash
 
-# 定义颜色代码
 red='\033[0;31m'
 green='\033[0;32m'
 blue='\033[0;34m'
 yellow='\033[0;33m'
 plain='\033[0m'
 
-# 定义路径变量
-xui_home="/usr/local/x-ui"
-xui_bin="/usr/local/x-ui/x-ui"
-pid_file="/var/run/x-ui.pid"
-log_file="/var/log/x-ui.log"
-config_file="$xui_home/config.json"
+cur_dir=$(pwd)
 
-# ==================== 通用函数 ====================
+# 检查root权限（保留不变）
+[[ $EUID -ne 0 ]] && echo -e "${red}Fatal error: ${plain} 请使用root权限运行脚本\n" && exit 1
 
-# 生成随机字符串
-gen_random_str() {
-    head -c 100 /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $1 | head -n 1
-}
-
-# 显示错误并退出
-error_exit() {
-    echo -e "${red}Error: $1${plain}" >&2
+# 操作系统检测（保留不变）
+if [[ -f /etc/os-release ]]; then
+    source /etc/os-release
+    release=$ID
+elif [[ -f /usr/lib/os-release ]]; then
+    source /usr/lib/os-release
+    release=$ID
+else
+    echo "无法检测操作系统，请联系作者！" >&2
     exit 1
-}
+fi
 
-# ==================== 安装相关函数 ====================
+echo "系统版本: $release"
 
-# 检查root权限
-check_root() {
-    [[ $EUID -ne 0 ]] && error_exit "Please use root user"
-}
-
-# 系统检测
-check_os() {
-    if [[ -f /etc/os-release ]]; then
-        source /etc/os-release
-        release=$ID
-    else
-        error_exit "Unsupported OS"
-    fi
-    echo -e "OS: ${green}${PRETTY_NAME}${plain}"
-}
-
-# 架构检测
-check_arch() {
+# CPU架构检测（保留不变）
+arch() {
     case "$(uname -m)" in
-        x86_64)  arch="amd64" ;;
-        aarch64) arch="arm64" ;;
-        armv7l)  arch="armv7" ;;
-        *)       error_exit "Unsupported architecture" ;;
+        x86_64|x64|amd64) echo 'amd64' ;;
+        i*86|x86) echo '386' ;;
+        armv8*|armv8|arm64|aarch64) echo 'arm64' ;;
+        armv7*|armv7|arm) echo 'armv7' ;;
+        armv6*|armv6) echo 'armv6' ;;
+        armv5*|armv5) echo 'armv5' ;;
+        s390x) echo 's390x' ;;
+        *) echo -e "${green}不支持的CPU架构! ${plain}" && rm -f install.sh && exit 1 ;;
     esac
-    echo -e "Arch: ${green}${arch}${plain}"
 }
 
-# 安装依赖
-install_deps() {
-    echo -e "${yellow}Installing dependencies...${plain}"
-    if command -v apt-get >/dev/null 2>&1; then
-        echo -e "${green}Detected APT package manager${plain}"
-        apt-get update
-        apt-get install -y wget tar jq
-    elif command -v yum >/dev/null 2>&1; then
-        echo -e "${green}Detected YUM package manager${plain}"
-        yum install -y wget tar jq
-    elif command -v dnf >/dev/null 2>&1; then
-        echo -e "${green}Detected DNF package manager${plain}"
-        dnf install -y wget tar jq
-    elif command -v apk >/dev/null 2>&1; then
-        echo -e "${green}Detected APK package manager${plain}"
-        apk add --no-cache wget tar jq
-    elif command -v pacman >/dev/null 2>&1; then
-        echo -e "${green}Detected Pacman package manager${plain}"
-        pacman -Sy --noconfirm wget tar jq
-    else
-        error_exit "Unsupported package manager! Please install wget, tar and jq manually"
-    fi
-}
+echo "系统架构: $(arch)"
 
-# 配置初始化
-init_config() {
-    mkdir -p $xui_home
-    echo -e "${yellow}Generating initial config...${plain}"
-    
-    read -p "Enter panel port (default: random between 20000-65000): " custom_port
-    if [ -z "$custom_port" ]; then
-        custom_port=$(shuf -i 20000-65000 -n 1)
-    fi
-    
-    local admin_user=$(gen_random_str 8)
-    local admin_pass=$(gen_random_str 12)
-    local web_path=$(gen_random_str 10)
-    
-    cat > $config_file <<EOF
-{
-  "web": {
-    "port": $custom_port,
-    "secret": "",
-    "basePath": "/$web_path",
-    "username": "$admin_user",
-    "password": "$admin_pass"
-  }
-}
-EOF
-    
-    echo -e "${green}========================================"
-    echo -e " Panel Address: http://[YOUR_IP]:$custom_port/$web_path"
-    echo -e " Username: $admin_user"
-    echo -e " Password: $admin_pass"
-    echo -e "========================================${plain}"
-}
-
-# 进程管理
-start_service() {
-    if [ -f $pid_file ]; then
-        echo -e "${yellow}Stopping existing service...${plain}"
-        kill -9 $(cat $pid_file) 2>/dev/null
-    fi
-    echo -e "${green}Starting x-ui...${plain}"
-    nohup $xui_bin > $log_file 2>&1 &
-    echo $! > $pid_file
-    sleep 2
-    if ps -p $(cat $pid_file) > /dev/null; then
-        echo -e "${green}Service started successfully! PID: $(cat $pid_file)${plain}"
-    else
-        error_exit "Failed to start service! Check $log_file"
-    fi
-}
-
-# 安装核心
-install_core() {
-    echo -e "${yellow}Downloading 3x-ui...${plain}"
-    latest_ver=$(curl -s https://api.github.com/repos/MHSanaei/3x-ui/releases/latest | grep tag_name | cut -d'"' -f4)
-    [ -z "$latest_ver" ] && error_exit "Failed to get version"
-    
-    wget -qO /tmp/x-ui.tar.gz "https://github.com/MHSanaei/3x-ui/releases/download/$latest_ver/x-ui-linux-$arch.tar.gz"
-    [ $? -ne 0 ] && error_exit "Download failed"
-    
-    echo -e "${green}Extracting files...${plain}"
-    tar xzf /tmp/x-ui.tar.gz -C /usr/local/
-    rm -f /tmp/x-ui.tar.gz
-    chmod +x $xui_bin
-    
-    # 创建管理脚本
-    create_management_script
-}
-
-# 创建管理脚本
-create_management_script() {
-    cat > /usr/local/bin/x-ui <<'EOM'
-#!/bin/bash
-
-# 定义颜色代码
-red='\033[0;31m'
-green='\033[0;32m'
-blue='\033[0;34m'
-yellow='\033[0;33m'
-plain='\033[0m'
-
-# 定义路径变量
-xui_home="/usr/local/x-ui"
-xui_bin="/usr/local/x-ui/x-ui"
-pid_file="/var/run/x-ui.pid"
-log_file="/var/log/x-ui.log"
-config_file="$xui_home/config.json"
-
-# 生成随机字符串
-gen_random_str() {
-    head -c 100 /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $1 | head -n 1
-}
-
-# 启动服务
-start_service() {
-    if [ -f $pid_file ]; then
-        echo -e "${yellow}Stopping existing service...${plain}"
-        kill -9 $(cat $pid_file) 2>/dev/null
-    fi
-    echo -e "${green}Starting x-ui...${plain}"
-    nohup $xui_bin > $log_file 2>&1 &
-    echo $! > $pid_file
-    sleep 2
-    if ps -p $(cat $pid_file) > /dev/null; then
-        echo -e "${green}Service started successfully! PID: $(cat $pid_file)${plain}"
-    else
-        echo -e "${red}Failed to start service! Check ${log_file}${plain}"
+# GLIBC版本检查（保留不变）
+check_glibc_version() {
+    glibc_version=$(ldd --version | head -n1 | awk '{print $NF}')
+    required_version="2.32"
+    if [[ "$(printf '%s\n' "$required_version" "$glibc_version" | sort -V | head -n1)" != "$required_version" ]]; then
+        echo -e "${red}GLIBC版本 $glibc_version 过低! 需要2.32或更高版本${plain}"
+        echo "请升级系统以获取更高GLIBC版本。"
         exit 1
     fi
+    echo "GLIBC版本: $glibc_version (满足2.32+要求)"
 }
 
-# 停止服务
-stop_service() {
-    if [ -f $pid_file ]; then
-        echo -e "${yellow}Stopping x-ui...${plain}"
-        kill -9 $(cat $pid_file) 2>/dev/null
-        rm -f $pid_file
-        echo -e "${green}Service stopped successfully!${plain}"
-    else
-        echo -e "${red}Service is not running${plain}"
-    fi
+check_glibc_version
+
+# 安装基础依赖（保留Debian系安装逻辑）
+install_base() {
+    case "${release}" in
+        ubuntu|debian|armbian)
+            apt-get update && apt-get install -y -q wget curl tar tzdata
+            ;;
+        # 其他系统保留但不会在Debian中使用
+        *) 
+            echo "非Debian系系统，可能不兼容"
+            exit 1
+            ;;
+    esac
 }
 
-# 重启服务
-restart_service() {
-    stop_service
-    start_service
+# 生成随机字符串（保留不变）
+gen_random_string() {
+    local length="$1"
+    local random_string=$(LC_ALL=C tr -dc 'a-zA-Z0-9' </dev/urandom | fold -w "$length" | head -n 1)
+    echo "$random_string"
 }
 
-# 修改服务端口
-change_port() {
-    if [ ! -f $config_file ]; then
-        echo -e "${red}Config file not found!${plain}"
-        return 1
-    fi
-    
-    echo -e "${yellow}Current panel port: $(jq -r '.web.port' $config_file)${plain}"
-    read -p "Enter new panel port (default: 2053): " new_port
-    new_port=${new_port:-2053}
-    
-    # 验证端口
-    if ! [[ $new_port =~ ^[0-9]+$ ]] || [ $new_port -lt 1 ] || [ $new_port -gt 65535 ]; then
-        echo -e "${red}Invalid port number!${plain}"
-        return 1
-    fi
-    
-    # 修改配置
-    jq ".web.port = $new_port" $config_file > $config_file.tmp && mv $config_file.tmp $config_file
-    echo -e "${green}Port changed to $new_port${plain}"
-    
-    # 重启服务
-    restart_service
-}
+# 创建SysVinit启动脚本
+create_initd_script() {
+    cat > /etc/init.d/x-ui <<EOF
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          x-ui
+# Required-Start:    \$network \$local_fs \$remote_fs
+# Required-Stop:     \$network \$local_fs \$remote_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: x-ui service
+### END INIT INFO
 
-# 重置面板设置
-reset_panel() {
-    echo -e "${yellow}Resetting panel settings...${plain}"
-    stop_service
-    
-    local admin_user=$(gen_random_str 8)
-    local admin_pass=$(gen_random_str 12)
-    local panel_port=$(shuf -i 20000-65000 -n 1)
-    local web_path=$(gen_random_str 10)
-    
-    cat > $config_file <<EOF
-{
-  "web": {
-    "port": $panel_port,
-    "secret": "",
-    "basePath": "/$web_path",
-    "username": "$admin_user",
-    "password": "$admin_pass"
-  }
-}
+case "\$1" in
+    start)
+        /usr/local/x-ui/x-ui start
+        ;;
+    stop)
+        /usr/local/x-ui/x-ui stop
+        ;;
+    restart)
+        /usr/local/x-ui/x-ui restart
+        ;;
+    status)
+        /usr/local/x-ui/x-ui status
+        ;;
+    *)
+        echo "Usage: \$0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
 EOF
-    
-    echo -e "${green}========================================"
-    echo -e " Panel Address: http://[YOUR_IP]:$panel_port/$web_path"
-    echo -e " Username: $admin_user"
-    echo -e " Password: $admin_pass"
-    echo -e "========================================${plain}"
-    
-    start_service
+
+    chmod +x /etc/init.d/x-ui
+    update-rc.d x-ui defaults
 }
 
-# 查看当前配置
-show_config() {
-    if [ ! -f $config_file ]; then
-        echo -e "${red}Config file not found!${plain}"
-        return 1
+# 安装后配置（保留自定义端口功能）
+config_after_install() {
+    # 原有配置读取逻辑保留
+    local existing_username=$(/usr/local/x-ui/x-ui setting -show true | grep -Eo 'username: .+' | awk '{print $2}')
+    local existing_password=$(/usr/local/x-ui/x-ui setting -show true | grep -Eo 'password: .+' | awk '{print $2}')
+    local existing_webBasePath=$(/usr/local/x-ui/x-ui setting -show true | grep -Eo 'webBasePath: .+' | awk '{print $2}')
+    local existing_port=$(/usr/local/x-ui/x-ui setting -show true | grep -Eo 'port: .+' | awk '{print $2}')
+    local server_ip=$(curl -s https://api.ipify.org)
+
+    if [[ ${#existing_webBasePath} -lt 4 ]]; then
+        if [[ "$existing_username" == "admin" && "$existing_password" == "admin" ]]; then
+            local config_webBasePath=$(gen_random_string 15)
+            local config_username=$(gen_random_string 10)
+            local config_password=$(gen_random_string 10)
+            
+            # 保留自定义端口功能
+            read -rp "是否自定义控制面板端口？(否则将使用随机端口) [y/n]: " config_confirm
+            if [[ "${config_confirm}" == "y" || "${config_confirm}" == "Y" ]]; then
+                read -rp "请输入端口号: " config_port
+                echo -e "${yellow}控制面板端口: ${config_port}${plain}"
+            else
+                local config_port=$(shuf -i 1024-62000 -n 1)
+                echo -e "${yellow}生成随机端口: ${config_port}${plain}"
+            fi
+            
+            /usr/local/x-ui/x-ui setting -username "${config_username}" -password "${config_password}" -port "${config_port}" -webBasePath "${config_webBasePath}"
+            echo -e "这是全新安装的x-ui面板"
+            echo -e "面板地址: http://${server_ip}:${config_port}/${config_webBasePath}"
+            echo -e "用户名: ${config_username}"
+            echo -e "密码: ${config_password}"
+        else
+            echo -e "${green}检测到现有配置，保留原有设置${plain}"
+        fi
     fi
+}
+
+# 主安装流程
+install() {
+    install_base
     
-    echo -e "${green}====== Current x-ui Configuration ======${plain}"
-    echo -e "Panel Port: $(jq -r '.web.port' $config_file)"
-    echo -e "Username: $(jq -r '.web.username' $config_file)"
-    echo -e "Password: $(jq -r '.web.password' $config_file)"
-    echo -e "Base Path: $(jq -r '.web.basePath' $config_file)"
-    echo -e "PID File: $pid_file"
-    echo -e "Log File: $log_file"
-    echo -e "Binary Path: $xui_bin"
-    echo -e "Config Path: $config_file"
-    echo -e "${green}=======================================${plain}"
-}
+    # 下载x-ui（保留原有逻辑）
+    local arch_type=$(arch)
+    echo "正在下载x-ui..."
+    mkdir -p /usr/local/x-ui
+    wget -O /usr/local/x-ui/x-ui-linux-${arch_type}.tar.gz https://github.com/sing-web/x-ui/releases/latest/download/x-ui-linux-${arch_type}.tar.gz
+    tar zxvf /usr/local/x-ui/x-ui-linux-${arch_type}.tar.gz -C /usr/local/x-ui
+    rm -f /usr/local/x-ui/x-ui-linux-${arch_type}.tar.gz
+    chmod +x /usr/local/x-ui/x-ui
 
-# 卸载服务
-uninstall_service() {
-    echo -e "${yellow}Uninstalling x-ui...${plain}"
-    stop_service
+    # 创建SysVinit脚本代替systemd
+    create_initd_script
     
-    rm -rf $xui_home
-    rm -f $pid_file
-    rm -f $log_file
-    rm -f /usr/local/bin/x-ui
+    # 启动服务
+    echo -e "${green}正在启动x-ui服务...${plain}"
+    /etc/init.d/x-ui start
     
-    echo -e "${green}x-ui has been uninstalled successfully!${plain}"
-}
-
-# 显示菜单
-show_menu() {
-    echo -e "${green}x-ui Management Menu${plain}"
-    echo -e "1. Change panel port"
-    echo -e "2. Reset panel settings"
-    echo -e "3. Show current configuration"
-    echo -e "4. Restart service"
-    echo -e "5. Stop service"
-    echo -e "6. Uninstall x-ui"
-    echo -e "0. Exit"
-    echo -n "Please enter your choice [0-6]: "
-}
-
-# 主循环
-main() {
-    while true; do
-        show_menu
-        read -r choice
-        case $choice in
-            1) change_port ;;
-            2) reset_panel ;;
-            3) show_config ;;
-            4) restart_service ;;
-            5) stop_service ;;
-            6) uninstall_service ;;
-            0) exit 0 ;;
-            *) echo -e "${red}Invalid option!${plain}" ;;
-        esac
-        echo
-    done
-}
-
-# 执行主函数
-main
-EOM
-
-    chmod +x /usr/local/bin/x-ui
-    echo -e "${green}Management script installed to /usr/local/bin/x-ui${plain}"
-}
-
-# ==================== 主安装流程 ====================
-
-main_install() {
-    echo -e "${green}Starting x-ui installation...${plain}"
-    check_root
-    check_os
-    check_arch
-    install_deps
-    init_config
-    install_core
-    start_service
+    config_after_install
     
-    echo -e "${green}========================================"
-    echo -e " x-ui installation completed!"
-    echo -e " Management command: x-ui"
-    echo -e "========================================${plain}"
+    echo -e "${green}x-ui安装完成！${plain}"
+    echo -e "使用以下命令管理服务："
+    echo -e "启动服务: ${yellow}/etc/init.d/x-ui start${plain}"
+    echo -e "停止服务: ${yellow}/etc/init.d/x-ui stop${plain}"
+    echo -e "重启服务: ${yellow}/etc/init.d/x-ui restart${plain}"
 }
 
-# 执行安装
-main_install
+install
