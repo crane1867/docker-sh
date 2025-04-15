@@ -101,18 +101,6 @@ show_config() {
     echo -e "${green}====================${plain}"
 }
 
-ssl_cert_issue() {
-    # ... [保留原版完整的SSL证书申请逻辑] ...
-}
-
-cron_jobs() {
-    # ... [保留原版完整的定时任务逻辑] ...
-}
-
-install_bbr() {
-    # ... [保留原版BBR安装逻辑] ...
-}
-
 uninstall() {
     read -p "确定要完全卸载吗？此操作不可逆！[y/n]: " confirm
     [[ $confirm != "y" ]] && return
