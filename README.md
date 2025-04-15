@@ -6,31 +6,9 @@ bash <(curl -sL https://raw.githubusercontent.com/crane1867/docker-hy2/refs/head
 ```
 bash <(curl -sL https://raw.githubusercontent.com/crane1867/docker-sh/refs/heads/main/docker-ddns-go.sh)
 ```
-# 3xui 一键脚本
+# xui(0.3.4.4.4版) 一键脚本
 ```
-bash <(curl -sL https://raw.githubusercontent.com/crane1867/docker-sh/refs/heads/main/docker-3xui.sh)
+bash <(curl -sL https://raw.githubusercontent.com/crane1867/docker-sh/refs/heads/main/docker-xui.0.3.4.4.4.sh)
 ```
-使用x-ui来管理
-如：
-
-x-ui start
-
-x-ui stop
-
-x-ui restart
-
-x-ui status
-
-x-ui settings
-
-x-ui enable
-
-x-ui log
-
-x-ui banlog
-
-x-ui update
-
-x-ui setport
-
-{start|stop|restart|status|settings|enable|disable|log|banlog|update|legacy|install|uninstall|setport}
+使用快捷键x-ui来管理
+记得在面板更新xray版本
