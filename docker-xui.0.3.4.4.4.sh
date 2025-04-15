@@ -7,28 +7,79 @@ plain='\033[0m'
 
 cur_dir=$(pwd)
 
-# check root
+# 检查root权限
 [[ $EUID -ne 0 ]] && echo -e "${red}错误：${plain} 必须使用root用户运行此脚本！\n" && exit 1
 
-# [原有系统检测代码保持不变...]
+# 系统检测
+if [[ -f /etc/redhat-release ]]; then
+    release="centos"
+elif cat /etc/issue | grep -Eqi "debian"; then
+    release="debian"
+elif cat /etc/issue | grep -Eqi "ubuntu"; then
+    release="ubuntu"
+elif cat /etc/issue | grep -Eqi "centos|red hat|redhat"; then
+    release="centos"
+elif cat /proc/version | grep -Eqi "debian"; then
+    release="debian"
+elif cat /proc/version | grep -Eqi "ubuntu"; then
+    release="ubuntu"
+elif cat /proc/version | grep -Eqi "centos|red hat|redhat"; then
+    release="centos"
+else
+    echo -e "${red}未检测到系统版本，请联系脚本作者！${plain}\n" && exit 1
+fi
+
+# 架构检测
+arch=$(arch)
+if [[ $arch == "x86_64" || $arch == "x64" || $arch == "s390x" || $arch == "amd64" ]]; then
+    arch="amd64"
+elif [[ $arch == "aarch64" || $arch == "arm64" ]]; then
+    arch="arm64"
+else
+    arch="amd64"
+    echo -e "${red}检测架构失败，使用默认架构: ${arch}${plain}"
+fi
+
+# 系统版本检测
+os_version=""
+if [[ -f /etc/os-release ]]; then
+    os_version=$(awk -F'[= ."]' '/VERSION_ID/{print $3}' /etc/os-release)
+fi
+if [[ -z "$os_version" && -f /etc/lsb-release ]]; then
+    os_version=$(awk -F'[= ."]+' '/DISTRIB_RELEASE/{print $2}' /etc/lsb-release)
+fi
+
+# 系统版本校验
+if [[ x"${release}" == x"centos" && ${os_version} -le 6 ]]; then
+    echo -e "${red}请使用 CentOS 7 或更高版本的系统！${plain}\n" && exit 1
+elif [[ x"${release}" == x"ubuntu" && ${os_version} -lt 16 ]]; then
+    echo -e "${red}请使用 Ubuntu 16 或更高版本的系统！${plain}\n" && exit 1
+elif [[ x"${release}" == x"debian" && ${os_version} -lt 8 ]]; then
+    echo -e "${red}请使用 Debian 8 或更高版本的系统！${plain}\n" && exit 1
+fi
+
+# 服务管理变量
+PID_FILE="/var/run/x-ui.pid"
+LOG_FILE="/var/log/x-ui.log"
 
 install_base() {
+    echo -e "${green}正在安装基础依赖...${plain}"
     if [[ x"${release}" == x"centos" ]]; then
-        yum install wget curl tar jq -y
+        yum install -y wget curl tar jq
     else
-        apt install wget curl tar jq -y
+        apt install -y wget curl tar jq
     fi
 }
 
-# 新增PID文件路径
-PID_FILE="/var/run/x-ui.pid"
-
 start_service() {
     if [ -f $PID_FILE ]; then
-        echo -e "${yellow}x-ui 已经在运行中${plain}"
-        return
+        pid=$(cat $PID_FILE)
+        if ps -p $pid > /dev/null; then
+            echo -e "${yellow}x-ui 已经在运行中${plain}"
+            return
+        fi
     fi
-    nohup /usr/local/x-ui/x-ui > /var/log/x-ui.log 2>&1 &
+    nohup /usr/local/x-ui/x-ui > $LOG_FILE 2>&1 &
     echo $! > $PID_FILE
     echo -e "${green}x-ui 已启动${plain}"
 }
@@ -38,8 +89,8 @@ stop_service() {
         echo -e "${yellow}x-ui 未在运行中${plain}"
         return
     fi
-    kill -9 $(cat $PID_FILE)
-    rm -f $PID_FILE
+    pid=$(cat $PID_FILE)
+    kill -9 $pid && rm -f $PID_FILE
     echo -e "${green}x-ui 已停止${plain}"
 }
 
@@ -50,35 +101,76 @@ restart_service() {
 }
 
 config_after_install() {
-    # [原有配置代码保持不变...]
+    echo -e "${yellow}正在初始化安全配置...${plain}"
+    read -p "是否立即配置账户和端口？[y/n]: " config_confirm
+    if [[ $config_confirm =~ ^[Yy]$ ]]; then
+        read -p "设置管理员账户: " config_account
+        read -p "设置管理员密码: " config_password
+        read -p "设置面板端口 (1-65535): " config_port
+        /usr/local/x-ui/x-ui setting -username $config_account -password $config_password -port $config_port
+        echo -e "${green}初始配置已设置${plain}"
+    else
+        random_user=$(head -c 6 /dev/urandom | base64)
+        random_pass=$(head -c 6 /dev/urandom | base64)
+        random_port=$((RANDOM%20000+10000))
+        /usr/local/x-ui/x-ui setting -username $random_user -password $random_pass -port $random_port
+        echo -e "${red}随机生成登录信息：${plain}"
+        echo -e "用户名: ${green}$random_user${plain}"
+        echo -e "密码:   ${green}$random_pass${plain}"
+        echo -e "端口:   ${red}$random_port${plain}"
+    fi
+}
+
+uninstall_xui() {
+    echo -e "${yellow}正在卸载x-ui...${plain}"
+    stop_service
+    rm -rf /usr/local/x-ui
+    rm -f /usr/bin/x-ui /var/log/x-ui.log $PID_FILE
+    echo -e "${green}x-ui 已完全卸载${plain}"
 }
 
 install_x-ui() {
     stop_service
     cd /usr/local/
     
-    # [原有下载解压代码保持不变...]
+    # 获取最新版本
+    last_version=$(curl -sL https://api.github.com/repos/FranzKafkaYu/x-ui/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
+    [ -z "$last_version" ] && last_version=$1
     
-    # 移除systemd相关代码
-    # rm -f /etc/systemd/system/x-ui.service
+    echo -e "${green}正在下载 x-ui v${last_version}...${plain}"
+    wget -q --no-check-certificate -O x-ui-linux-${arch}.tar.gz \
+        https://github.com/FranzKafkaYu/x-ui/releases/download/${last_version}/x-ui-linux-${arch}.tar.gz
+
+    # 清除旧版本
+    rm -rf x-ui/ x-ui-linux-${arch}.tar.gz
+    
+    # 解压安装
+    tar zxvf x-ui-linux-${arch}.tar.gz
+    rm -f x-ui-linux-${arch}.tar.gz
+    mv x-ui /usr/local/
     
     # 安装管理脚本
-    wget --no-check-certificate -O /usr/bin/x-ui https://raw.githubusercontent.com/FranzKafkaYu/x-ui/main/x-ui.sh
-    chmod +x /usr/local/x-ui/x-ui.sh
-    chmod +x /usr/bin/x-ui
+    wget -q --no-check-certificate -O /usr/bin/x-ui \
+        https://raw.githubusercontent.com/FranzKafkaYu/x-ui/main/x-ui.sh
+    chmod +x /usr/local/x-ui/x-ui /usr/bin/x-ui
     
+    # 初始化配置
+    touch $LOG_FILE && chmod 666 $LOG_FILE
     config_after_install
     
-    # 创建日志文件
-    touch /var/log/x-ui.log
-    chmod 666 /var/log/x-ui.log
-    
+    # 启动服务
     start_service
-    echo -e "${green}x-ui v${last_version}${plain} 安装完成，面板已启动"
     
-    # [原有帮助信息保持不变...]
+    # 显示帮助信息
+    echo -e "\n${green}安装完成！管理命令：${plain}"
+    echo -e "启动服务:    x-ui start"
+    echo -e "停止服务:    x-ui stop"
+    echo -e "查看状态:    x-ui status"
+    echo -e "修改配置:    x-ui set-port"
+    echo -e "完全卸载:    x-ui uninstall"
 }
 
-echo -e "${green}开始安装${plain}"
+# 主安装流程
+echo -e "\n${green}===== x-ui 安装程序 =====${plain}"
 install_base
 install_x-ui $1
