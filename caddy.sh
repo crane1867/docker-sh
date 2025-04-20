@@ -42,15 +42,18 @@ setup_environment() {
     if [ ! -f "${CONFIG_DIR}/Caddyfile" ]; then
         cat > "${CONFIG_DIR}/Caddyfile" <<EOF
 {
-    admin localhost:2019
+    admin 127.0.0.1:2019
     log {
-        output file ${LOG_DIR}/access.log {
+        output file /var/log/caddy/access.log {
             roll_size 100mb
             roll_keep 5
         }
         level ERROR
     }
+    http_port 8080
+    https_port 8443
 }
+
 
 :80 {
     respond "Caddy 安装成功！"
