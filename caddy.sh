@@ -39,7 +39,10 @@ install_caddy() {
 setup_caddy() {
     # 创建配置目录
     mkdir -p "$CONFIG_DIR" "$LOG_DIR"
+
+    touch "${LOG_DIR}/access.log" "${LOG_DIR}/error.log"
     chown -R www-data:www-data "$CONFIG_DIR" "$LOG_DIR"
+    chmod 664 "${LOG_DIR}"/*.log  # 设置适当权限
     
     # 生成默认Caddyfile
     if [ ! -f "${CONFIG_DIR}/Caddyfile" ]; then
@@ -47,7 +50,11 @@ setup_caddy() {
 {
     admin localhost:2019
     log {
-        output file ${LOG_DIR}/access.log
+        output file ${LOG_DIR}/access.log {
+            roll_size 100mb
+            roll_keep 5
+        }
+        level ERROR
     }
 }
 
@@ -60,7 +67,7 @@ EOF
 
 # 安装服务脚本
 install_service() {
-    cat > "$SERVICE_FILE" <<'EOF'
+    cat > /usr/local/bin/caddy <<'EOF'
 #!/bin/sh
 # Caddy 服务管理脚本
 
