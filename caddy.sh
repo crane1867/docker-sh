@@ -133,14 +133,19 @@ log() {
 }
 
 enable_autostart() {
-    if grep -q "\$0 start" /etc/rc.local 2>/dev/null; then
+    if [ ! -f /etc/rc.local ]; then
+        echo -e "#!/bin/bash\nexit 0" > /etc/rc.local
+        chmod +x /etc/rc.local
+    fi
+
+    if grep -q "$0 start" /etc/rc.local 2>/dev/null; then
         echo "已设置为开机自启"
     else
-        sed -i '/^exit 0/i\$0 start' /etc/rc.local
-        chmod +x /etc/rc.local
+        sed -i '/^exit 0/i\'"$0 start" /etc/rc.local
         echo "已配置 /etc/rc.local 开机自启"
     fi
 }
+
 
 uninstall() {
     stop
