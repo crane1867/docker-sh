@@ -17,7 +17,6 @@ if ! command -v cron >/dev/null 2>&1; then
         echo "无法安装 cron，请手动执行: apt update && apt install -y cron" >&2
         exit 1
     }
-    systemctl enable cron >/dev/null 2>&1 || service cron start >/dev/null 2>&1
 fi
 
 # 创建保活脚本
