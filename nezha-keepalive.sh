@@ -22,24 +22,24 @@ fi
 
 # 创建保活脚本
 echo "正在创建保活脚本..."
-mkdir -p /opt/nezha/agent/logs
-cat > /opt/nezha/agent/keepalive.sh <<'EOF'
+tee /opt/nezha/agent/keepalive.sh <<'EOF'
 #!/bin/bash
-LOG_FILE="/opt/nezha/agent/logs/nezha-agent.log"
+LOG_DIR="/opt/nezha/agent/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/nezha-agent.log"
 
-# 检查进程是否存在
+# 如果进程不存在则启动（直接重定向输出到文件）
 if ! pgrep -f "nezha-agent -c /opt/nezha/agent/config.yml" >/dev/null; then
-    # 启动并丢弃所有输出（若需日志请将 >/dev/null 改为 >>"$LOG_FILE"）
-    nohup /opt/nezha/agent/nezha-agent -c /opt/nezha/agent/config.yml >/dev/null 2>&1 &
+    nohup /opt/nezha/agent/nezha-agent -c /opt/nezha/agent/config.yml >"$LOG_FILE" 2>&1 &
 fi
+
 EOF
 
 chmod +x /opt/nezha/agent/keepalive.sh
 
-# 配置定时任务（防重复添加）
+# 配置定时任务
 echo "正在设置定时任务..."
-CRON_JOB="* * * * * /opt/nezha/agent/keepalive.sh"
-(crontab -l 2>/dev/null | grep -v "/opt/nezha/agent/keepalive.sh"; echo "$CRON_JOB") | crontab -
+(crontab -l 2>/dev/null; echo "* * * * * /opt/nezha/agent/keepalive.sh") | crontab -
 
 # 首次启动
 echo "启动服务中..."
