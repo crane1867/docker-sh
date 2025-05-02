@@ -48,4 +48,4 @@ echo "启动服务中..."
 # 验证结果
 echo -e "\n\033[32m[部署结果]\033[0m"
 echo -e "进程 PID: \033[33m$(pgrep -f nezha-agent || echo "未运行")\033[0m"
-echo -e "定时任务: \033[33m$(crontab -l | grep nezha-agent)\033[0m"
+echo -e "定时任务状态: \033[33m$(crontab -l | grep -F "/opt/nezha/agent/keepalive.sh" || echo "未检测到")\033[0m"
