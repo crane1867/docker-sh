@@ -1,70 +1,51 @@
 #!/bin/bash
-# 一键保活部署脚本 - 适用于无 systemd 的 Debian 系统
+# 一键保活脚本 - 仅依赖 cron
 
-set -e  # 遇到错误自动退出
+set -e  # 遇错自动退出
 
 # 检查 root 权限
 if [ "$(id -u)" != "0" ]; then
-    echo "错误：请使用 root 权限运行此脚本 (sudo $0)" >&2
+    echo "错误：请使用 root 权限运行 (sudo $0)" >&2
     exit 1
 fi
 
-# 安装依赖
-echo "正在安装编译依赖..."
-apt update >/dev/null 2>&1
-if ! command -v gcc >/dev/null 2>&1; then
-    apt install -y gcc >/dev/null 2>&1 || {
-        echo "无法安装 gcc，请手动执行: apt update && apt install -y gcc" >&2
+# 安装 cron 服务（如果未安装）
+if ! command -v cron >/dev/null 2>&1; then
+    echo "正在安装 cron 服务..."
+    apt update >/dev/null 2>&1
+    apt install -y cron >/dev/null 2>&1 || {
+        echo "无法安装 cron，请手动执行: apt update && apt install -y cron" >&2
         exit 1
     }
+    systemctl enable cron >/dev/null 2>&1 || service cron start >/dev/null 2>&1
 fi
 
-# 创建 syslog 劫持库
-echo "正在配置 syslog 劫持..."
-mkdir -p /opt/nezha/agent
-cat > /opt/nezha/agent/fake_syslog.c <<'EOF'
-#include <stdarg.h>
-#include <syslog.h>
-
-void syslog(int priority, const char *format, ...) {}
-void closelog(void) {}
-void openlog(const char *ident, int option, int facility) {}
-EOF
-
-gcc -shared -fPIC -o /opt/nezha/agent/libfake_syslog.so /opt/nezha/agent/fake_syslog.c >/dev/null 2>&1 || {
-    echo "编译劫持库失败，请检查 gcc 是否安装" >&2
-    exit 1
-}
-
 # 创建保活脚本
-echo "正在部署保活服务..."
+echo "正在创建保活脚本..."
+mkdir -p /opt/nezha/agent/logs
 cat > /opt/nezha/agent/keepalive.sh <<'EOF'
 #!/bin/bash
-export LD_PRELOAD="/opt/nezha/agent/libfake_syslog.so"
-LOG_DIR="/opt/nezha/agent/logs"
-mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/nezha-agent.log"
+LOG_FILE="/opt/nezha/agent/logs/nezha-agent.log"
 
+# 检查进程是否存在
 if ! pgrep -f "nezha-agent -c /opt/nezha/agent/config.yml" >/dev/null; then
-    nohup /opt/nezha/agent/nezha-agent -c /opt/nezha/agent/config.yml >>"$LOG_FILE" 2>&1 &
+    # 启动并丢弃所有输出（若需日志请将 >/dev/null 改为 >>"$LOG_FILE"）
+    nohup /opt/nezha/agent/nezha-agent -c /opt/nezha/agent/config.yml >/dev/null 2>&1 &
 fi
 EOF
 
 chmod +x /opt/nezha/agent/keepalive.sh
 
-# 配置定时任务
+# 配置定时任务（防重复添加）
 echo "正在设置定时任务..."
-(crontab -l 2>/dev/null | grep -v "/opt/nezha/agent/keepalive.sh"; echo "* * * * * /opt/nezha/agent/keepalive.sh") | crontab -
+CRON_JOB="* * * * * /opt/nezha/agent/keepalive.sh"
+(crontab -l 2>/dev/null | grep -v "/opt/nezha/agent/keepalive.sh"; echo "$CRON_JOB") | crontab -
 
 # 首次启动
 echo "启动服务中..."
 /opt/nezha/agent/keepalive.sh
 
 # 验证结果
-echo -e "\n\033[32m部署完成！验证结果：\033[0m"
-sleep 2
-echo -e "进程状态：\033[33m$(pgrep -f nezha-agent || echo "未运行")\033[0m"
-echo -e "定时任务：\033[33m"
-crontab -l | grep nezha-agent
-echo -e "\033[0m最新日志："
-tail -n 4 /opt/nezha/agent/logs/nezha-agent.log 2>/dev/null || echo "暂无日志"
+echo -e "\n\033[32m[部署结果]\033[0m"
+echo -e "进程 PID: \033[33m$(pgrep -f nezha-agent || echo "未运行")\033[0m"
+echo -e "定时任务: \033[33m$(crontab -l | grep nezha-agent)\033[0m"
