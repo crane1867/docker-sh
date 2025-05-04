@@ -29,7 +29,7 @@ LOG_FILE="$LOG_DIR/nezha-agent.log"
 
 # 如果进程不存在则启动（直接重定向输出到文件）
 if ! pgrep -f "nezha-agent -c /opt/nezha/agent/config.yml" >/dev/null; then
-    nohup /opt/nezha/agent/nezha-agent -c /opt/nezha/agent/config.yml >"$LOG_FILE" 2>&1 </dev/null &
+    nohup /opt/nezha/agent/nezha-agent -c /opt/nezha/agent/config.yml >"$LOG_FILE" 2>&1 &
 fi
 
 EOF
