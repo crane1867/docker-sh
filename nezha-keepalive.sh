@@ -29,7 +29,7 @@ LOG_FILE="$LOG_DIR/nezha-agent.log"
 
 # 如果进程不存在则启动（直接重定向输出到文件）
 if ! pgrep -f "nezha-agent -c /opt/nezha/agent/config.yml" >/dev/null; then
-    nohup /opt/nezha/agent/nezha-agent -c /opt/nezha/agent/config.yml >"$LOG_FILE" 2>&1 &
+    nohup /opt/nezha/agent/nezha-agent -c /opt/nezha/agent/config.yml >"$LOG_FILE" 2>&1 </dev/null &
 fi
 
 EOF
@@ -43,7 +43,7 @@ echo "正在设置定时任务..."
 # 首次启动
 echo "启动服务中..."
 /opt/nezha/agent/keepalive.sh
-
+service cron start
 # 验证结果
 echo -e "\n\033[32m[部署结果]\033[0m"
 echo -e "进程 PID: \033[33m$(pgrep -f nezha-agent || echo "未运行")\033[0m"
