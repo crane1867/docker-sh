@@ -34,19 +34,17 @@ fi
 
 EOF
 
+# 首次启动
+echo "启动服务中..."
 chmod +x /opt/nezha/agent/keepalive.sh
+/opt/nezha/agent/keepalive.sh
+service cron start
 
 # 配置定时任务
 echo "正在设置定时任务..."
 
 (crontab -l 2>/dev/null; echo "* * * * * /opt/nezha/agent/keepalive.sh") | crontab -
 
-(crontab -l 2>/dev/null; echo "* * * * * /opt/nezha/agent/keepalive.sh") | crontab -
-
-# 首次启动
-echo "启动服务中..."
-/opt/nezha/agent/keepalive.sh
-service cron start
 # 验证结果
 echo -e "\n\033[32m[部署结果]\033[0m"
 echo -e "进程 PID: \033[33m$(pgrep -f nezha-agent || echo "未运行")\033[0m"
