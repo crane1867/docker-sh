@@ -38,6 +38,7 @@ chmod +x /opt/nezha/agent/keepalive.sh
 
 # 配置定时任务
 echo "正在设置定时任务..."
+
 (crontab -l 2>/dev/null; echo "* * * * * /opt/nezha/agent/keepalive.sh") | crontab -
 
 # 首次启动
